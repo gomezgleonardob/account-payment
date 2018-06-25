@@ -36,11 +36,16 @@ def post_init_hook(cr, pool):
 
 
 def store_field_stored_invoice_id(cr):
-    cr.execute(
-        """
-        ALTER TABLE account_move_line ADD COLUMN stored_invoice_id integer;
-        COMMENT ON COLUMN account_move_line.stored_invoice_id IS 'Invoice';
-        """)
+    cr.execute("""SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name='account_move_line' AND
+    column_name='stored_invoice_id'""")
+    if not cr.fetchone():
+        cr.execute(
+            """
+            ALTER TABLE account_move_line ADD COLUMN stored_invoice_id integer;
+            COMMENT ON COLUMN account_move_line.stored_invoice_id IS 'Invoice';
+            """)
 
     logger.info('Computing field stored_invoice_id on account.move.line')
 
@@ -56,12 +61,17 @@ def store_field_stored_invoice_id(cr):
 
 
 def store_field_invoice_user_id(cr):
-    cr.execute(
-        """
-        ALTER TABLE account_move_line ADD COLUMN invoice_user_id integer;
-        COMMENT ON COLUMN account_move_line.invoice_user_id IS
-        'Invoice salesperson';
-        """)
+    cr.execute("""SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name='account_move_line' AND
+    column_name='invoice_user_id'""")
+    if not cr.fetchone():
+        cr.execute(
+            """
+            ALTER TABLE account_move_line ADD COLUMN invoice_user_id integer;
+            COMMENT ON COLUMN account_move_line.invoice_user_id IS
+            'Invoice salesperson';
+            """)
 
     logger.info('Computing field invoice_user_id on account.move.line')
 
@@ -76,13 +86,18 @@ def store_field_invoice_user_id(cr):
 
 
 def store_field_maturity_residual(cr):
-    cr.execute(
-        """
-        ALTER TABLE account_move_line ADD COLUMN maturity_residual
-        double precision;
-        COMMENT ON COLUMN account_move_line.maturity_residual
-        IS 'Residual Amount';
-        """)
+    cr.execute("""SELECT column_name
+    FROM information_schema.columns
+    WHERE table_name='account_move_line' AND
+    column_name='maturity_residual'""")
+    if not cr.fetchone():
+        cr.execute(
+            """
+            ALTER TABLE account_move_line ADD COLUMN maturity_residual
+            double precision;
+            COMMENT ON COLUMN account_move_line.maturity_residual
+            IS 'Residual Amount';
+            """)
 
 
 def store_field_maturity_residual_post_init(env):
