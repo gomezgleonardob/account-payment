@@ -6,7 +6,10 @@
         <field name="inherit_id" ref="account.view_bank_statement_form"/>
         <field name="arch" type="xml">
             <xpath expr="//field[@name='line_ids']/tree" position="inside">
-                <button icon="fa fa-print" name="action_print_invoice_payment" type="object"/>
+                <button icon="fa fa-print"
+                        name="action_print_invoice_payment"
+                        type="object"
+                        attrs="{'invisible':[('journal_entry_ids', '=',[])]}"/>
             </xpath>
         </field>
     </record>

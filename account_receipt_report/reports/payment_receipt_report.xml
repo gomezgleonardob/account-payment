@@ -27,69 +27,65 @@
                                 </div>
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="col-xs-3 square">
+                        <div name='row_header' class="row">
+                            <div name='box_payment_number' class="col-xs-3 square">
                                 <div class="row row-content">
                                     <div class="highlight">Receipt #</div>
                                     <div><span t-field="o.name"/></div>
                                 </div>
                             </div>
-                            <div class="col-xs-6 square">
+                            <div name='box_amount' class="col-xs-3 square">
                                 <div class="row row-content">
-                                    <div class="highlight">Expedition place</div>
-                                    <div><span t-field="o.company_id.city" class="text-uppercase"/></div>
-                                </div>
-                            </div>
-                            <div class="col-xs-3 square">
-                                <div class="row row-content">
-                                    <div class="highlight">Amount</div>
+                                    <div class="highlight">Paid amount</div>
                                     <div><span t-field="o.credit" t-options="{'widget': 'monetary', 'display_currency': o.currency_id}"/></div>
                                 </div>
                             </div>
                         </div>
-                        <div class="row">
-                            <div class="col-xs-6 square">
+                        <div name='row_dates' class="row">
+                            <div name='row_dates_payment' class="col-xs-6 square">
                                 <div class="row row-content">
-                                    <div class="highlight">Expedition date</div>
+                                    <div class="highlight">Payment date</div>
                                     <div><span t-field="o.date"/></div>
                                 </div>
                             </div>
-                            <div class="col-xs-6 square">
+                            <div name='row_dates_payment_due' class="col-xs-6 square">
                                 <div class="row row-content">
                                     <div class="highlight">Due date</div>
                                     <div><span t-esc="o.date_maturity" t-options="{'widget': 'date'}"/></div>
                                 </div>
                             </div>
                         </div>
-                        <div class="row" style="border-spacing: 2px;">
+                        <div name='row_payment_details' class="row" style="border-spacing: 2px;">
                             <div class="col-xs-12 square"
                                  style="min-height: 80px;">
                                 <div class="row row-content">
-                                    <div> <span class="highlight">INVOICE </span> <span t-field="o.ref"/></div>
-                                    <div><span class="highlight">TOTAL TO PAY </span> <span t-field="o.credit" t-options="{'widget': 'monetary', 'display_currency': o.company_currency_id}"/></div>
+                                    <div> <span class="highlight">Reference </span> <span t-field="o.name"/></div>
+                                    <div><span class="highlight">Paid amount </span> <span t-field="o.credit" t-options="{'widget': 'monetary', 'display_currency': o.company_currency_id}"/></div>
                                 </div>
                             </div>
                         </div>
-                        <div class="row" style="border-spacing: 2px;">
+                        <div name='box_payment_method' class="row" style="border-spacing: 2px;">
                             <div class="col-xs-6 square">
                                 <div class="row row-content">
-                                    <div class="highlight">Payable</div>
+                                    <div class="highlight">Payment method</div>
                                     <div><span t-field="o.journal_id.name"/></div>
                                 </div>
                             </div>
-                            <div class="col-xs-6 square">
+                            <div name='box_bank_account' t-if="o.journal_id.type == 'bank'" class="col-xs-6 square">
                                 <div class="row row-content">
-                                    <div class="highlight">IBAN</div>
+                                    <div class="highlight">Bank account</div>
                                     <div> </div>
                                 </div>
                             </div>
                         </div>
-                        <div class="row" style="border-spacing: 2px;">
+                        <div name='box_partner_detail' class="row" style="border-spacing: 2px;">
                             <div class="col-xs-8 square">
                                 <div class="row row-content">
                                     <span t-field="o.partner_id"
                                           t-options='{"widget": "contact", "fields": ["address", "name"], "no_marker": True}'/>
-                                    <b>VAT: <span t-field="o.partner_id.vat"/></b>
+                                    <t t-if="o.partner_id.vat">
+                                        <b>VAT: <span t-field="o.partner_id.vat"/></b>
+                                    </t>
                                 </div>
                             </div>
                         </div>
