@@ -58,10 +58,12 @@ class ReportCheckPrint(models.AbstractModel):
         total_amount_to_show = 0.0
         # We pay out
         if line.matched_credit_ids:
-            amount = -1 * sum([p.amount for p in line.matched_credit_ids])
+            amount = -1 * sum([p.amount for p in line.matched_credit_ids.filtered(
+                lambda l: l.credit_move_id.payment_id == payment)])            
         # We receive payment
         elif line.matched_debit_ids:
-            amount = sum([p.amount for p in line.matched_debit_ids])
+            amount = sum([p.amount for p in line.matched_debit_ids.filtered(
+                lambda l: l.debit_move_id.payment_id == payment)])
 
         # In case of customer payment, we reverse the amounts
         if payment.partner_type == 'customer':
