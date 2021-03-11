@@ -44,6 +44,42 @@ class ReportCheckPrint(models.AbstractModel):
         amls |= invoice_amls
         return amls
 
+    def _get_residual_amount_at_payment_date(self, payment, line):
+        amt = line.invoice_id.amount_total - \
+            self._get_paid_amount_at_payment_date(payment, line)
+        if amt < 0.0:
+            amt *= -1
+        amt = payment.company_id.currency_id.with_context(
+            date=payment.payment_date).compute(
+            amt, payment.currency_id)
+        return amt
+
+    def _get_paid_amount_at_payment_date(self, payment, line):
+        amount = 0.0
+        total_paid_at_payment_date = 0.0
+        # Considering the dates of the partial reconcile
+        if line.matched_credit_ids:
+            amount = -1 * sum([p.amount for p in line.matched_credit_ids.filtered(
+                lambda l: l.credit_move_id.date <= payment.payment_date)])
+        # We receive payment
+        elif line.matched_debit_ids:
+            amount = sum([p.amount for p in line.matched_debit_ids.filtered(
+                lambda l: l.debit_move_id.date <= payment.payment_date)])
+
+        # In case of customer payment, we reverse the amounts
+        if payment.partner_type == 'customer':
+            amount *= -1
+
+        amount_to_show = \
+            payment.company_id.currency_id.with_context(
+                date=payment.payment_date).compute(
+                amount, payment.currency_id)
+        if not float_is_zero(
+                amount_to_show,
+                precision_rounding=payment.currency_id.rounding):
+            total_paid_at_payment_date = amount_to_show
+        return total_paid_at_payment_date
+
     def _get_residual_amount(self, payment, line):
         amt = line.amount_residual
         if amt < 0.0:
@@ -59,7 +95,7 @@ class ReportCheckPrint(models.AbstractModel):
         # We pay out
         if line.matched_credit_ids:
             amount = -1 * sum([p.amount for p in line.matched_credit_ids.filtered(
-                lambda l: l.credit_move_id.payment_id == payment)])            
+                lambda l: l.credit_move_id.payment_id == payment)])
         # We receive payment
         elif line.matched_debit_ids:
             amount = sum([p.amount for p in line.matched_debit_ids.filtered(
@@ -98,7 +134,7 @@ class ReportCheckPrint(models.AbstractModel):
             'time': time,
             'total_amount': self._get_total_amount,
             'paid_lines': self._get_paid_lines,
-            'residual_amount': self._get_residual_amount,
+            'residual_amount': self._get_residual_amount_at_payment_date,
             'paid_amount': self._get_paid_amount,
             '_format_date_to_partner_lang': self._format_date_to_partner_lang,
         }
