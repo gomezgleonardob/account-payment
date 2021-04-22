@@ -31,7 +31,8 @@ class ReportCheckPrint(models.AbstractModel):
         # Include direct refunds:
         if payment.partner_type == "customer":
             amls += rec_lines.mapped(
-                "matched_debit_ids.debit_move_id.matched_credit_ids.credit_move_id"
+                "matched_debit_ids.debit_move_id.matched_credit_ids."
+                "credit_move_id"
             ).filtered(
                 lambda l: l.invoice_id
                 not in rec_lines.mapped(
@@ -42,7 +43,8 @@ class ReportCheckPrint(models.AbstractModel):
             )
         elif payment.partner_type == "supplier":
             amls += rec_lines.mapped(
-                "matched_credit_ids.credit_move_id.matched_debit_ids.debit_move_id"
+                "matched_credit_ids.credit_move_id.matched_debit_ids."
+                "debit_move_id"
             ).filtered(
                 lambda l: l.invoice_id
                 not in rec_lines.mapped(
@@ -82,11 +84,13 @@ class ReportCheckPrint(models.AbstractModel):
     def _get_paid_amount_this_payment(self, payment, line):
         amount = 0.0
         total_paid_at_payment_date = 0.0
+        payment_invoices = payment.mapped('invoice_ids')
         # Considering the dates of the partial reconcile
         if line.matched_credit_ids:
             # consider direct refund case
             if payment.partner_type == "supplier" and line.mapped(
-                "matched_credit_ids.credit_move_id.matched_debit_ids.debit_move_id"
+                "matched_credit_ids.credit_move_id.matched_debit_ids."
+                "debit_move_id"
             ):
                 amount = -1 * sum(
                     [
@@ -99,6 +103,7 @@ class ReportCheckPrint(models.AbstractModel):
                                 "matched_debit_ids.debit_move_id.invoice_id"
                             )
                             and l.debit_move_id.invoice_id == line.invoice_id
+                            and l.credit_move_id.invoice_id in payment_invoices
                         )
                     ]
                 )
@@ -109,7 +114,8 @@ class ReportCheckPrint(models.AbstractModel):
                         for p in line.matched_credit_ids.filtered(
                             lambda l: l.credit_move_id.date
                             <= payment.payment_date
-                            and l.credit_move_id.payment_id == payment
+                            and (l.credit_move_id.payment_id == payment or not
+                             l.credit_move_id.payment_id)
                         )
                     ]
                 )
@@ -117,7 +123,8 @@ class ReportCheckPrint(models.AbstractModel):
         elif line.matched_debit_ids:
             # consider direct refund case (nasty corner case)
             if payment.partner_type == "customer" and line.mapped(
-                "matched_debit_ids.debit_move_id.matched_credit_ids.credit_move_id"
+                "matched_debit_ids.debit_move_id.matched_credit_ids."
+                "credit_move_id"
             ):
                 amount = sum(
                     [
@@ -130,6 +137,7 @@ class ReportCheckPrint(models.AbstractModel):
                                 "matched_credit_ids.credit_move_id.invoice_id"
                             )
                             and l.credit_move_id.invoice_id == line.invoice_id
+                            and l.debit_move_id.invoice_id in payment_invoices
                         )
                     ]
                 )
@@ -140,7 +148,8 @@ class ReportCheckPrint(models.AbstractModel):
                         for p in line.matched_debit_ids.filtered(
                             lambda l: l.debit_move_id.date
                             <= payment.payment_date
-                            and l.debit_move_id.payment_id == payment
+                            and (l.debit_move_id.payment_id == payment or not
+                             l.debit_move_id.payment_id)
                         )
                     ]
                 )
@@ -164,7 +173,8 @@ class ReportCheckPrint(models.AbstractModel):
         if line.matched_credit_ids:
             # consider direct refund case
             if payment.partner_type == "supplier" and line.mapped(
-                "matched_credit_ids.credit_move_id.matched_debit_ids.debit_move_id"
+                "matched_credit_ids.credit_move_id.matched_debit_ids."
+                "debit_move_id"
             ):
                 amount = -1 * sum(
                     [
@@ -177,7 +187,8 @@ class ReportCheckPrint(models.AbstractModel):
                                 "matched_debit_ids.debit_move_id.invoice_id"
                             )
                             and l.debit_move_id.invoice_id == line.invoice_id
-                            and l.debit_move_id.invoice_id.date_invoice <= payment.payment_date
+                            and l.debit_move_id.invoice_id.date_invoice
+                            <= payment.payment_date
                         )
                     ]
                 )
@@ -195,7 +206,8 @@ class ReportCheckPrint(models.AbstractModel):
         elif line.matched_debit_ids:
             # consider direct refund case (nasty corner case)
             if payment.partner_type == "customer" and line.mapped(
-                "matched_debit_ids.debit_move_id.matched_credit_ids.credit_move_id"
+                "matched_debit_ids.debit_move_id.matched_credit_ids."
+                "credit_move_id"
             ):
                 amount = sum(
                     [
@@ -208,7 +220,8 @@ class ReportCheckPrint(models.AbstractModel):
                                 "matched_credit_ids.credit_move_id.invoice_id"
                             )
                             and l.credit_move_id.invoice_id == line.invoice_id
-                            and l.credit_move_id.invoice_id.date_invoice <= payment.payment_date
+                            and l.credit_move_id.invoice_id.date_invoice
+                            <= payment.payment_date
                         )
                     ]
                 )

@@ -17,11 +17,13 @@ class AccountPayment(models.Model):
         # include direct refunds
         if self.partner_type == "customer":
             invoice_ids = rec_lines.mapped(
-                "matched_debit_ids.debit_move_id.matched_credit_ids.credit_move_id.invoice_id"
+                "matched_debit_ids.debit_move_id.matched_credit_ids."
+                "credit_move_id.invoice_id"
             ).filtered(lambda i: i.date_invoice <= self.payment_date)
         elif self.partner_type == "supplier":
             invoice_ids = rec_lines.mapped(
-                "matched_credit_ids.credit_move_id.matched_debit_ids.debit_move_id.invoice_id"
+                "matched_credit_ids.credit_move_id.matched_debit_ids."
+                "debit_move_id.invoice_id"
             ).filtered(lambda i: i.date_invoice <= self.payment_date)
         # include other invoices where the payment was applied
         invoice_ids += rec_lines.mapped(
