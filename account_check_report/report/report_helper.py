@@ -69,11 +69,29 @@ class ReportCheckPrint(models.AbstractModel):
             and x.account_id == payment.destination_account_id
             and x.partner_id == payment.partner_id)
         amls |= invoice_amls
-        return amls
+        res = []
+        invoices_checked = []
+        # Another nasty corner case:
+        # avoid printing more than one line for invoice where the
+        # payable/receivable line is split. That happens when using
+        # payment terms with several lines
+        # I group the lines by invoice below
+        for aml in amls:
+            invoice = aml.invoice_id
+            if invoice in invoices_checked:
+                # prevent duplicated lines
+                continue
+            if invoice:
+                invoices_checked.append(invoice)
+                amls_inv = amls.filtered(lambda l: l.invoice_id == invoice)
+                res.append([l for l in amls_inv])
+            else:
+                res.append([aml])
+        return res
 
-    def _get_residual_amount(self, payment, line):
-        amt = abs(line.invoice_id.amount_total) - \
-            abs(self._get_paid_amount(payment, line))
+    def _get_residual_amount(self, payment, lines):
+        amt = abs(lines[0].invoice_id.amount_total) - \
+            abs(self._get_paid_amount(payment, lines))
         if amt < 0.0:
             amt *= -1
         amt = payment.company_id.currency_id.with_context(
@@ -81,181 +99,192 @@ class ReportCheckPrint(models.AbstractModel):
             amt, payment.currency_id)
         return amt
 
-    def _get_paid_amount_this_payment(self, payment, line):
-        amount = 0.0
-        total_paid_at_payment_date = 0.0
-        payment_invoices = payment.mapped('invoice_ids')
-        # Considering the dates of the partial reconcile
-        if line.matched_credit_ids:
-            # consider direct refund case
-            if payment.partner_type == "supplier" and line.mapped(
-                "matched_credit_ids.credit_move_id.matched_debit_ids."
-                "debit_move_id"
-            ):
-                amount = -1 * sum(
-                    [
-                        p.amount
-                        for p in line.mapped(
-                            "matched_credit_ids.credit_move_id.matched_debit_ids"
-                        ).filtered(
-                            lambda l: l.debit_move_id.invoice_id
-                            not in line.mapped(
-                                "matched_debit_ids.debit_move_id.invoice_id"
+    def _get_paid_amount_this_payment(self, payment, lines):
+        "Get the paid amount for the payment at payment date"
+        agg_amt = 0
+        for line in lines:
+            amount = 0.0
+            total_paid_at_payment_date = 0.0
+            payment_invoices = payment.mapped('invoice_ids')
+            # Considering the dates of the partial reconcile
+            if line.matched_credit_ids:
+                # consider direct refund case
+                if payment.partner_type == "supplier" and line.mapped(
+                    "matched_credit_ids.credit_move_id.matched_debit_ids."
+                    "debit_move_id"
+                ):
+                    amount = -1 * sum(
+                        [
+                            p.amount
+                            for p in line.mapped(
+                                "matched_credit_ids.credit_move_id.matched_debit_ids"
+                            ).filtered(
+                                lambda l: l.debit_move_id.invoice_id
+                                not in line.mapped(
+                                    "matched_debit_ids.debit_move_id.invoice_id"
+                                )
+                                and l.debit_move_id.invoice_id == line.invoice_id
+                                and l.credit_move_id.invoice_id in payment_invoices
                             )
-                            and l.debit_move_id.invoice_id == line.invoice_id
-                            and l.credit_move_id.invoice_id in payment_invoices
-                        )
-                    ]
-                )
-            else:
-                amount = -1 * sum(
-                    [
-                        p.amount
-                        for p in line.matched_credit_ids.filtered(
-                            lambda l: l.credit_move_id.date
-                            <= payment.payment_date
-                            and (l.credit_move_id.payment_id == payment or not
-                             l.credit_move_id.payment_id)
-                        )
-                    ]
-                )
-        # We receive payment
-        elif line.matched_debit_ids:
-            # consider direct refund case (nasty corner case)
-            if payment.partner_type == "customer" and line.mapped(
-                "matched_debit_ids.debit_move_id.matched_credit_ids."
-                "credit_move_id"
-            ):
-                amount = sum(
-                    [
-                        p.amount
-                        for p in line.mapped(
-                            "matched_debit_ids.debit_move_id.matched_credit_ids"
-                        ).filtered(
-                            lambda l: l.credit_move_id.invoice_id
-                            not in line.mapped(
-                                "matched_credit_ids.credit_move_id.invoice_id"
+                        ]
+                    )
+                else:
+                    amount = -1 * sum(
+                        [
+                            p.amount
+                            for p in line.matched_credit_ids.filtered(
+                                lambda l: l.credit_move_id.date
+                                <= payment.payment_date
+                                and (l.credit_move_id.payment_id == payment or not
+                                     l.credit_move_id.payment_id)
                             )
-                            and l.credit_move_id.invoice_id == line.invoice_id
-                            and l.debit_move_id.invoice_id in payment_invoices
-                        )
-                    ]
-                )
-            else:
-                amount = sum(
-                    [
-                        p.amount
-                        for p in line.matched_debit_ids.filtered(
-                            lambda l: l.debit_move_id.date
-                            <= payment.payment_date
-                            and (l.debit_move_id.payment_id == payment or not
-                             l.debit_move_id.payment_id)
-                        )
-                    ]
-                )
-
-        # In case of customer payment, we reverse the amounts
-        if payment.partner_type == "customer":
-            amount *= -1
-        amount_to_show = payment.company_id.currency_id.with_context(
-            date=payment.payment_date
-        ).compute(amount, payment.currency_id)
-        if not float_is_zero(
-            amount_to_show, precision_rounding=payment.currency_id.rounding
-        ):
-            total_paid_at_payment_date = amount_to_show
-        return total_paid_at_payment_date
-
-    def _get_paid_amount(self, payment, line):
-        amount = 0.0
-        total_amount_to_show = 0.0
-        # Considering the dates of the partial reconcile
-        if line.matched_credit_ids:
-            # consider direct refund case
-            if payment.partner_type == "supplier" and line.mapped(
-                "matched_credit_ids.credit_move_id.matched_debit_ids."
-                "debit_move_id"
-            ):
-                amount = -1 * sum(
-                    [
-                        p.amount
-                        for p in line.mapped(
-                            "matched_credit_ids.credit_move_id.matched_debit_ids"
-                        ).filtered(
-                            lambda l: l.debit_move_id.invoice_id
-                            not in line.mapped(
-                                "matched_debit_ids.debit_move_id.invoice_id"
+                        ]
+                    )
+            # We receive payment
+            elif line.matched_debit_ids:
+                # consider direct refund case (nasty corner case)
+                if payment.partner_type == "customer" and line.mapped(
+                    "matched_debit_ids.debit_move_id.matched_credit_ids."
+                    "credit_move_id"
+                ):
+                    amount = sum(
+                        [
+                            p.amount
+                            for p in line.mapped(
+                                "matched_debit_ids.debit_move_id.matched_credit_ids"
+                            ).filtered(
+                                lambda l: l.credit_move_id.invoice_id
+                                not in line.mapped(
+                                    "matched_credit_ids.credit_move_id.invoice_id"
+                                )
+                                and l.credit_move_id.invoice_id == line.invoice_id
+                                and l.debit_move_id.invoice_id in payment_invoices
                             )
-                            and l.debit_move_id.invoice_id == line.invoice_id
-                            and l.debit_move_id.invoice_id.date_invoice
-                            <= payment.payment_date
-                        )
-                    ]
-                )
-            else:
-                amount = -1 * sum(
-                    [
-                        p.amount
-                        for p in line.matched_credit_ids.filtered(
-                            lambda l: l.credit_move_id.date
-                            <= payment.payment_date
-                        )
-                    ]
-                )
-        # We receive payment
-        elif line.matched_debit_ids:
-            # consider direct refund case (nasty corner case)
-            if payment.partner_type == "customer" and line.mapped(
-                "matched_debit_ids.debit_move_id.matched_credit_ids."
-                "credit_move_id"
-            ):
-                amount = sum(
-                    [
-                        p.amount
-                        for p in line.mapped(
-                            "matched_debit_ids.debit_move_id.matched_credit_ids"
-                        ).filtered(
-                            lambda l: l.credit_move_id.invoice_id
-                            not in line.mapped(
-                                "matched_credit_ids.credit_move_id.invoice_id"
+                        ]
+                    )
+                else:
+                    amount = sum(
+                        [
+                            p.amount
+                            for p in line.matched_debit_ids.filtered(
+                                lambda l: l.debit_move_id.date
+                                <= payment.payment_date
+                                and (l.debit_move_id.payment_id == payment or not
+                                     l.debit_move_id.payment_id)
                             )
-                            and l.credit_move_id.invoice_id == line.invoice_id
-                            and l.credit_move_id.invoice_id.date_invoice
-                            <= payment.payment_date
-                        )
-                    ]
-                )
-            else:
-                amount = sum(
-                    [
-                        p.amount
-                        for p in line.matched_debit_ids.filtered(
-                            lambda l: l.debit_move_id.date
-                            <= payment.payment_date
-                        )
-                    ]
-                )
+                        ]
+                    )
 
-        # In case of customer payment, we reverse the amounts
-        if payment.partner_type == "customer":
-            amount *= -1
-        amount_to_show = payment.company_id.currency_id.with_context(
-            date=payment.payment_date
-        ).compute(amount, payment.currency_id)
-        if not float_is_zero(
-            amount_to_show, precision_rounding=payment.currency_id.rounding
-        ):
-            total_amount_to_show = amount_to_show
-        return total_amount_to_show
+            # In case of customer payment, we reverse the amounts
+            if payment.partner_type == "customer":
+                amount *= -1
+            amount_to_show = payment.company_id.currency_id.with_context(
+                date=payment.payment_date
+            ).compute(amount, payment.currency_id)
+            if not float_is_zero(
+                amount_to_show, precision_rounding=payment.currency_id.rounding
+            ):
+                total_paid_at_payment_date = amount_to_show
+            agg_amt += total_paid_at_payment_date
+        return agg_amt
 
-    def _get_total_amount(self, payment, line):
-        amt = line.balance
-        if amt < 0.0 or line.invoice_id.type in ('in_refund', 'out_refund'):
-            amt *= -1
-        amt = payment.company_id.currency_id.with_context(
-            date=payment.payment_date).compute(
-            amt, payment.currency_id)
-        return amt
+    def _get_paid_amount(self, payment, lines):
+        "Get the total paid amount for all payments at the payment date"
+        agg_amt = 0.0
+        for line in lines:
+            amount = 0.0
+            total_amount_to_show = 0.0
+            # Considering the dates of the partial reconcile
+            if line.matched_credit_ids:
+                # consider direct refund case
+                if payment.partner_type == "supplier" and line.mapped(
+                    "matched_credit_ids.credit_move_id.matched_debit_ids."
+                    "debit_move_id"
+                ):
+                    amount = -1 * sum(
+                        [
+                            p.amount
+                            for p in line.mapped(
+                                "matched_credit_ids.credit_move_id.matched_debit_ids"
+                            ).filtered(
+                                lambda l: l.debit_move_id.invoice_id
+                                not in line.mapped(
+                                    "matched_debit_ids.debit_move_id.invoice_id"
+                                )
+                                and l.debit_move_id.invoice_id == line.invoice_id
+                                and l.debit_move_id.invoice_id.date_invoice
+                                <= payment.payment_date
+                            )
+                        ]
+                    )
+                else:
+                    amount = -1 * sum(
+                        [
+                            p.amount
+                            for p in line.matched_credit_ids.filtered(
+                                lambda l: l.credit_move_id.date
+                                <= payment.payment_date
+                            )
+                        ]
+                    )
+            # We receive payment
+            elif line.matched_debit_ids:
+                # consider direct refund case (nasty corner case)
+                if payment.partner_type == "customer" and line.mapped(
+                    "matched_debit_ids.debit_move_id.matched_credit_ids."
+                    "credit_move_id"
+                ):
+                    amount = sum(
+                        [
+                            p.amount
+                            for p in line.mapped(
+                                "matched_debit_ids.debit_move_id.matched_credit_ids"
+                            ).filtered(
+                                lambda l: l.credit_move_id.invoice_id
+                                not in line.mapped(
+                                    "matched_credit_ids.credit_move_id.invoice_id"
+                                )
+                                and l.credit_move_id.invoice_id == line.invoice_id
+                                and l.credit_move_id.invoice_id.date_invoice
+                                <= payment.payment_date
+                            )
+                        ]
+                    )
+                else:
+                    amount = sum(
+                        [
+                            p.amount
+                            for p in line.matched_debit_ids.filtered(
+                                lambda l: l.debit_move_id.date
+                                <= payment.payment_date
+                            )
+                        ]
+                    )
+
+            # In case of customer payment, we reverse the amounts
+            if payment.partner_type == "customer":
+                amount *= -1
+            amount_to_show = payment.company_id.currency_id.with_context(
+                date=payment.payment_date
+            ).compute(amount, payment.currency_id)
+            if not float_is_zero(
+                amount_to_show, precision_rounding=payment.currency_id.rounding
+            ):
+                total_amount_to_show = amount_to_show
+            agg_amt += total_amount_to_show
+        return agg_amt
+
+    def _get_total_amount(self, payment, lines):
+        agg_amt = 0
+        for line in lines:
+            amt = line.balance
+            if amt < 0.0 or line.invoice_id.type in ('in_refund', 'out_refund'):
+                amt *= -1
+            amt = payment.company_id.currency_id.with_context(
+                date=payment.payment_date).compute(
+                amt, payment.currency_id)
+            agg_amt += amt
+        return agg_amt
 
     @api.multi
     def render_html(self, docids, data=None):

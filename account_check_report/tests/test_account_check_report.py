@@ -162,7 +162,7 @@ class TestAccountCheckReport(TransactionCase):
             vendor_bill.move_id.line_ids.filtered(
                 lambda l: l.account_id == acc_payable
             )
-            in amls
+            in amls[0]
         )
         #  Test button invoices
         domain_inv = payment.button_invoices()
